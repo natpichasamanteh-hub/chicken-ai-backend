@@ -37,13 +37,29 @@ async def count_chickens(file: UploadFile = File(...)):
     try:
         # 1. อ่านรูปภาพ
         contents = await file.read()
-        image = Image.open(io.BytesIO(contents))
+        
+        # 🛑 ป้องกันภาพ Error จากกล้องมือถือ
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
         
         # 2. ให้ AI ทำนาย (conf=0.25 คือความมั่นใจ 25% ขึ้นไปถึงจะนับ)
         results = model(image, conf=0.25)
         
-        # 3. นับจำนวนกรอบสี่เหลี่ยม
-        count = len(results[0].boxes)
+        detections = []
+        result = results[0]
+        
+        # 3. ดึงรายละเอียดของแต่ละกรอบ (Box) อย่างปลอดภัย
+        for box in result.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist() 
+            confidence = box.conf.item()
+            class_id = int(box.cls.item())
+            
+            detections.append({
+                "box": [round(x1), round(y1), round(x2), round(y2)],
+                "confidence": round(confidence, 2),
+                "class_id": class_id
+            })
+        
+        count = len(detections)
         
         # 4. แสดงผลในจอดำ (Terminal)
         print(f"📸 รับรูปภาพแล้ว -> 🐔 AI นับได้: {count} ตัว")
@@ -51,6 +67,7 @@ async def count_chickens(file: UploadFile = File(...)):
         return {
             "success": True,
             "count": count,
+            "detections": detections, # 🔥 อัปเดตตรงนี้! ส่งพิกัดกลับไปให้ React วาดกรอบ
             "message": f"Found {count} chickens"
         }
         
